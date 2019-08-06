@@ -273,7 +273,7 @@ class GccFlagsTuner(opentuner.measurement.MeasurementInterface):
       return Result(state='ERROR', time=float('inf'))
 
     tmp_dir = self.get_tmpdir(result_id)
-    output_dir = '%s/%s' % (tmp_dir, args.output)
+    output_dir = os.path.join(tmp_dir, args.output)
     try:
       run_result = self.call_program([output_dir], limit=limit,
                                      memory_limit=args.memory_limit)
@@ -322,7 +322,7 @@ class GccFlagsTuner(opentuner.measurement.MeasurementInterface):
       os.stat(tmp_dir)
     except OSError:
       os.mkdir(tmp_dir)
-    output_dir = '%s/%s' % (tmp_dir, args.output)
+    output_dir = os.path.join(tmp_dir, args.output)
     cmd = args.compile_template.format(source=args.source, output=output_dir,
                                        flags=' '.join(flags),
                                        cc=args.cc)
