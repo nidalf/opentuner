@@ -117,15 +117,17 @@ class FileDisplayPlugin(SearchPlugin):
     else:
       self.details = None
 
-  def on_result(self, result):
-    if self.out and result.time < self.last_best:
-      self.last_best = result.time
+  def on_new_best_result(self, result):
+    if self.out:
       print((result.collection_date - self.start_date).total_seconds(), \
-          result.time, file=self.out)
+          result.time, result.size, file=self.out)
       self.out.flush()
+
+  def on_result(self, result):
     if self.details:
+      #TODO do we always want time and size printed?
       print((result.collection_date - self.start_date).total_seconds(), \
-          result.time, file=self.details)
+          result.time, result.size, file=self.details)
       self.details.flush()
 
 def get_enabled(args):
