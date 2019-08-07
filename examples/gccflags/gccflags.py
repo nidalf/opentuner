@@ -37,6 +37,14 @@ argparser.add_argument('--compile-template',
                        default='{cc} {source} -o {output} -lpthread {flags}',
                        help='command to compile {source} into {output} with'
                             ' {flags}')
+argparser.add_argument('--time-template',
+                       default='time {output}',
+                       help='command to measure execution time of {output}\n'
+                            'set to '' to disable time measurement')
+argparser.add_argument('--size-template',
+                       default='size {output}',
+                       help='command to measure size of {output}\n'
+                            'set to '' to disable size measurement')
 argparser.add_argument('--compile-limit', type=float, default=30,
                        help='kill gcc if it runs more than {default} sec')
 argparser.add_argument('--scaler', type=int, default=4,
@@ -58,6 +66,8 @@ argparser.add_argument('--flags-histogram', action='store_true',
 argparser.add_argument('--flag-importance',
                        help='Test the importance of different flags from a '
                             'given json file.')
+argparser.add_argument('--objective', default='time',
+                       help='The objective to optimize.')
 
 
 class GccFlagsTuner(opentuner.measurement.MeasurementInterface):
@@ -65,9 +75,11 @@ class GccFlagsTuner(opentuner.measurement.MeasurementInterface):
     super(GccFlagsTuner, self).__init__(program_name=args.source, *pargs,
                                         **kwargs)
     self.gcc_version = self.extract_gcc_version()
+    self.baselines = ['-O0', '-O1', '-Os', '-O2', '-O3']
     self.cc_flags = self.extract_working_flags()
     self.cc_param_defaults = self.extract_param_defaults()
-    self.cc_params = self.extract_working_params()
+    # self.cc_params = self.extract_working_params()
+    self.cc_params = []
 
     # these bugs are hardcoded for now
     # sets of options which causes gcc to barf
@@ -89,10 +101,21 @@ class GccFlagsTuner(opentuner.measurement.MeasurementInterface):
       os.mkdir('./tmp')
     self.run_baselines()
 
+  def objective(self):
+    if self._objective is None:
+      if args.objective == 'time':
+        return opentuner.search.objective.MinimizeTime()
+      elif args.objective == 'size':
+        return opentuner.search.objective.MinimizeSize()
+      else:
+        raise Exception("unsupported objective '%s'" % args.objective)
+    return self._objective
+
   def run_baselines(self):
-    log.info("baseline perfs -O0=%.4f -O1=%.4f -O2=%.4f -O3=%.4f",
-             *[self.run_with_flags(['-O%d' % i], None).time
-               for i in range(4)])
+    for bl in self.baselines:
+      result = self.run_with_flags([bl], None)
+      log.info('Baseline result ' + bl + ': time=%.4f size=%.4f'
+               % (result.time, result.size))
 
   def extract_gcc_version(self):
     m = re.search(r'([0-9]+)[.]([0-9]+)[.]([0-9]+)', subprocess.check_output([
@@ -202,7 +225,8 @@ class GccFlagsTuner(opentuner.measurement.MeasurementInterface):
 
   def manipulator(self):
     m = manipulator.ConfigurationManipulator()
-    m.add_parameter(manipulator.IntegerParameter('-O', 0, 3))
+    m.add_parameter(
+        manipulator.EnumParameter('-O', self.baselines))
     for flag in self.cc_flags:
       m.add_parameter(manipulator.EnumParameter(flag, ['on', 'off', 'default']))
     for param in self.cc_params:
@@ -227,7 +251,8 @@ class GccFlagsTuner(opentuner.measurement.MeasurementInterface):
     return m
 
   def cfg_to_flags(self, cfg):
-    flags = ['-O%d' % cfg['-O']]
+    # set -O level first
+    flags = ['%s' % cfg['-O']]
     for flag in self.cc_flags:
       if cfg[flag] == 'on':
         flags.append(flag)
@@ -262,32 +287,81 @@ class GccFlagsTuner(opentuner.measurement.MeasurementInterface):
 
   compile_results = {'ok': 0, 'timeout': 1, 'error': 2}
 
+  def measure_size(self, output):
+    cmd = args.size_template.format(output=output)
+    size_result = self.call_program(cmd)
+    if size_result['returncode'] != 0:
+      return size_result
+    size_lines = size_result['stdout'].splitlines()
+    if len(size_lines) != 2:
+      log.warning('Unxpected number of lines output by size: %d',
+        len(size_lines))
+      log.warning('size stdout: %s' % size_result['stdout'])
+      log.warning('size stderr: %s' % size_result['stderr'])
+      size_result['state'] = 'ERROR'
+      return size_result
+    try:
+      # Text size should be on last line, first colunn
+      size_result['size'] = float(size_lines[-1].split()[0])
+    except:
+      log.warning('Unable to convert %s to float' % size_result['stdout'])
+      log.warning('size stdout: %s' % size_result['stdout'])
+      log.warning('size stderr: %s' % size_result['stderr'])
+      size_result['state'] = 'ERROR'
+      return size_result
+    return size_result
+
   def run_precompiled(self, desired_result, input, limit, compile_result,
                       result_id):
     if self.args.force_killall:
       os.system('killall -9 cc1plus 2>/dev/null')
     # Make sure compile was successful
     if compile_result == self.compile_results['timeout']:
-      return Result(state='TIMEOUT', time=float('inf'))
+      return Result(state='TIMEOUT', time=float('inf'), size=float('inf'))
     elif compile_result == self.compile_results['error']:
-      return Result(state='ERROR', time=float('inf'))
+      return Result(state='ERROR', time=float('inf'), size=float('inf'))
 
     tmp_dir = self.get_tmpdir(result_id)
     output_dir = os.path.join(tmp_dir, args.output)
-    try:
-      run_result = self.call_program([output_dir], limit=limit,
-                                     memory_limit=args.memory_limit)
-    except OSError:
-      return Result(state='ERROR', time=float('inf'))
+    result = Result(state='OK', time=float('inf'), size=float('inf'))
 
-    if run_result['returncode'] != 0:
-      if run_result['timeout']:
-        return Result(state='TIMEOUT', time=float('inf'))
-      else:
-        log.error('program error')
-        return Result(state='ERROR', time=float('inf'))
+    if self.args.time_template != '':
+      try:
+        # this measures the time to run 'output_dir', including some overheads
+        #TODO replace with call to external script which outputs result as last
+        # line on stdout - this will allow tuning cross-compiled targets via a
+        # simulator
+        run_result = self.call_program([output_dir], limit=limit,
+                                       memory_limit=args.memory_limit)
+        if (run_result['returncode'] != 0):
+          if run_result['timeout']:
+            result.state = 'TIMEOUT'
+          else:
+            log.error('execution error')
+            result.state = 'ERROR'
+        else:
+          result.time = run_result['time']
+      except OSError as e:
+        if e.errno == 8:
+          log.warning('%s: was %s compiled for and run on the correct target?'
+                      % (e.strerror, output_dir))
+        result.state = 'ERROR'
 
-    return Result(time=run_result['time'])
+    if self.args.size_template != '':
+      try:
+        size_result = self.measure_size(output_dir)
+        if (size_result['returncode'] != 0
+            or size_result.get('state') == 'ERROR'):
+          result.state = 'ERROR'
+        else:
+          result.size = size_result['size']
+      except OSError:
+        result.state = 'ERROR'
+
+    log.info('result.state=%s result.time=%.4f result.size=%.4f' %
+             (result.state, result.time, result.size))
+
+    return result
 
   def debug_gcc_error(self, flags):
     def fails(subflags):
@@ -327,6 +401,7 @@ class GccFlagsTuner(opentuner.measurement.MeasurementInterface):
                                        flags=' '.join(flags),
                                        cc=args.cc)
 
+    # log.info('cmd: ' + str(cmd))
     compile_result = self.call_program(cmd, limit=args.compile_limit,
                                        memory_limit=args.memory_limit)
     if compile_result['returncode'] != 0:
@@ -334,6 +409,7 @@ class GccFlagsTuner(opentuner.measurement.MeasurementInterface):
         log.warning("gcc timeout")
         return self.compile_results['timeout']
       else:
+        log.warning("gcc error %s", compile_result['stdout'])
         log.warning("gcc error %s", compile_result['stderr'])
         self.debug_gcc_error(flags)
         return self.compile_results['error']
