@@ -34,7 +34,7 @@ log = logging.getLogger('gccflags')
 argparser = argparse.ArgumentParser(parents=opentuner.argparsers())
 argparser.add_argument('source', help='source file to compile')
 argparser.add_argument('--compile-template',
-                       default='{cc} {source} -o {output} -lpthread {flags}',
+                       default='{cc} {source} -o {output} {flags}',
                        help='command to compile {source} into {output} with'
                             ' {flags}')
 argparser.add_argument('--time-template',
