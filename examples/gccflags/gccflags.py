@@ -387,6 +387,15 @@ class GccFlagsTuner(opentuner.measurement.MeasurementInterface):
         if not fails(tmpflags):
           minimal_flags.append(flags[i])
       log.error("compiler crashes/hangs with flags: %s", minimal_flags)
+      # if this is a single flag that breaks compilation, remove it from the
+      # search
+      #TODO also remove malfunctioning param values
+      if len(minimal_flags) == 1:
+        flag_to_remove = minimal_flags[0]
+        if flag_to_remove in self.cc_flags:
+          self.cc_flags.remove(flag_to_remove)
+        log.warning("removed error causing flag from search: %s"
+                    % flag_to_remove)
 
   def compile(self, config_data, result_id):
     flags = self.cfg_to_flags(config_data)
