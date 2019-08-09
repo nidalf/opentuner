@@ -120,14 +120,16 @@ class FileDisplayPlugin(SearchPlugin):
   def on_new_best_result(self, result):
     if self.out:
       print((result.collection_date - self.start_date).total_seconds(), \
-          result.time, result.size, file=self.out)
+             result.time, result.size, result.configuration.data, \
+             file=self.out)
       self.out.flush()
 
   def on_result(self, result):
     if self.details:
       #TODO do we always want time and size printed?
       print((result.collection_date - self.start_date).total_seconds(), \
-          result.time, result.size, file=self.details)
+             result.time, result.size, result.configuration.data, \
+             file=self.details)
       self.details.flush()
 
 def get_enabled(args):
