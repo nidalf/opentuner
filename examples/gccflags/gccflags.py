@@ -203,8 +203,10 @@ class GccFlagsTuner(opentuner.measurement.MeasurementInterface):
       return working_params
 
   def check_if_flag_works(self, flag, try_inverted=True):
+    # need -Werror as some unsupported flags only produce warnings and the
+    # returncode is still 0
     cmd = args.compile_template.format(source=args.source, output=args.output,
-                                       flags=flag, cc=args.cc)
+                                       flags='-Werror ' + flag, cc=args.cc)
     compile_result = self.call_program(cmd, limit=args.compile_limit)
     if compile_result['returncode'] != 0:
       log.warning("removing flag %s because it results in compile error", flag)
