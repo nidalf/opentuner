@@ -78,8 +78,7 @@ class GccFlagsTuner(opentuner.measurement.MeasurementInterface):
     self.baselines = ['-O0', '-O1', '-Os', '-O2', '-O3']
     self.cc_flags = self.extract_working_flags()
     self.cc_param_defaults = self.extract_param_defaults()
-    # self.cc_params = self.extract_working_params()
-    self.cc_params = []
+    self.cc_params = self.extract_working_params()
 
     # these bugs are hardcoded for now
     # sets of options which causes gcc to barf
@@ -156,9 +155,23 @@ class GccFlagsTuner(opentuner.measurement.MeasurementInterface):
     if os.path.isfile(PARAMS_DEFAULTS_CACHE_FILE) and not args.no_cached_flags:
       # use cached version
       param_defaults = json.load(open(PARAMS_DEFAULTS_CACHE_FILE))
+      return param_defaults
     else:
-      # default values of params need to be extracted from source code,
-      # since they are not in --help
+      # extract param default values using 'gcc --help=params -Q'
+      result = self.call_program([self.args.cc, '--help=params', '-Q'])
+      if result['returncode'] == 0:
+        all_params = re.findall(r'^\s+([a-z0-9-]+)\s+default\s+([0-9]+)\s+minimum\s+([0-9]+)\s+maximum\s+([0-9]+)', result['stdout'], re.MULTILINE)
+        print(all_params)
+        if all_params != []:
+          param_defaults = {name : {'default' : int(default),
+                                    'min'     : int(param_min),
+                                    'max'     : int(param_max)}
+                            for name, default, param_min, param_max
+                              in all_params}
+          json.dump(param_defaults, open(PARAMS_DEFAULTS_CACHE_FILE, 'w'))
+          return param_defaults
+      # In older versions of gcc, default values of params need to be extracted
+      # from source code, since they are not in --help
       param_defaults = dict()
       params_def = open(os.path.expanduser(PARAMS_DEF_PATH)).read()
       for m in re.finditer(r'DEFPARAM *\((([^")]|"[^"]*")*)\)', params_def):
