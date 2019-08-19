@@ -281,6 +281,22 @@ class GccFlagsTuner(opentuner.measurement.MeasurementInterface):
     self.enabled_in_config_cache[(olevel, flag)] = False
     return False
 
+  def seed_configurations(self):
+    if self.args.objective == 'size':
+      log.info("Setting initial config of -Os to target size")
+      olevel = '-Os'
+    else:
+      log.info("Setting initial config of -O3 to target time")
+      olevel = '-O3'
+    keys = ['-O'] + self.cc_flags + self.cc_params
+    cfg = {key : olevel if key == '-O'
+           else self.enabledInConfig(key, olevel) if key in self.cc_flags
+           else self.cc_param_defaults[key]['default']
+                if key in self.cc_params
+           else None
+           for key in keys}
+    return [cfg]
+
   def cfg_to_flags(self, cfg):
     # set -O level first
     flags = ['%s' % cfg['-O']]
