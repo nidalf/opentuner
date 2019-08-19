@@ -240,31 +240,33 @@ class GccFlagsTuner(opentuner.measurement.MeasurementInterface):
     return True
 
   def manipulator(self):
-    m = manipulator.ConfigurationManipulator()
-    m.add_parameter(
-        manipulator.EnumParameter('-O', self.baselines))
-    for flag in self.cc_flags:
-      m.add_parameter(manipulator.EnumParameter(flag, ['on', 'off', 'default']))
-    for param in self.cc_params:
-      defaults = self.cc_param_defaults[param]
-      if defaults['max'] <= defaults['min']:
-        defaults['max'] = float('inf')
-      defaults['max'] = min(defaults['max'],
-                            max(1, defaults['default']) * args.scaler)
-      defaults['min'] = max(defaults['min'],
-                            old_div(max(1, defaults['default']), args.scaler))
+    if self._manipulator is None:
+      m = manipulator.ConfigurationManipulator()
+      m.add_parameter(
+          manipulator.EnumParameter('-O', self.baselines))
+      for flag in self.cc_flags:
+        m.add_parameter(manipulator.BooleanParameter(flag))
+      for param in self.cc_params:
+        defaults = self.cc_param_defaults[param]
+        if defaults['max'] <= defaults['min']:
+          defaults['max'] = float('inf')
+        defaults['max'] = min(defaults['max'],
+                              max(1, defaults['default']) * args.scaler)
+        defaults['min'] = max(defaults['min'],
+                              old_div(max(1, defaults['default']), args.scaler))
 
-      if param == 'l1-cache-line-size':
-        # gcc requires this to be a power of two or it internal errors
-        m.add_parameter(manipulator.PowerOfTwoParameter(param, 4, 256))
-      elif defaults['max'] > 128:
-        m.add_parameter(manipulator.LogIntegerParameter(
-            param, defaults['min'], defaults['max']))
-      else:
-        m.add_parameter(manipulator.IntegerParameter(
-            param, defaults['min'], defaults['max']))
+        if param == 'l1-cache-line-size':
+          # gcc requires this to be a power of two or it internal errors
+          m.add_parameter(manipulator.PowerOfTwoParameter(param, 4, 256))
+        elif defaults['max'] > 128:
+          m.add_parameter(manipulator.LogIntegerParameter(
+              param, defaults['min'], defaults['max']))
+        else:
+          m.add_parameter(manipulator.IntegerParameter(
+              param, defaults['min'], defaults['max']))
 
-    return m
+      self._manipulator = m
+    return self._manipulator
 
   # check if flag is enabled by default in olevel
   def enabledInConfig(self, flag, olevel):
