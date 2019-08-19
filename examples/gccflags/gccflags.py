@@ -301,11 +301,12 @@ class GccFlagsTuner(opentuner.measurement.MeasurementInterface):
     # set -O level first
     flags = ['%s' % cfg['-O']]
     for flag in self.cc_flags:
-      if cfg[flag] == 'on':
-        flags.append(flag)
-      elif cfg[flag] == 'off':
-        flags.append(invert_gcc_flag(flag))
-
+      if cfg[flag] == True:
+        if not self.enabledInConfig(flag, cfg['-O']):
+          flags.append(flag)
+      elif cfg[flag] == False:
+        if self.enabledInConfig(flag, cfg['-O']):
+          flags.append(invert_gcc_flag(flag))
     for param in self.cc_params:
       flags.append('--param=%s=%d' % (param, cfg[param]))
 
