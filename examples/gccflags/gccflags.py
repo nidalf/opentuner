@@ -99,6 +99,7 @@ class GccFlagsTuner(opentuner.measurement.MeasurementInterface):
     except OSError:
       os.mkdir('./tmp')
     self.run_baselines()
+    self.enabled_in_config_cache = dict()
 
   def objective(self):
     if self._objective is None:
@@ -264,6 +265,19 @@ class GccFlagsTuner(opentuner.measurement.MeasurementInterface):
             param, defaults['min'], defaults['max']))
 
     return m
+
+  # check if flag is enabled by default in olevel
+  def enabledInConfig(self, flag, olevel):
+    if (olevel, flag) in self.enabled_in_config_cache:
+      return self.enabled_in_config_cache[(olevel, flag)]
+    cc_query = subprocess.check_output([self.args.cc,'--help=opt','-Q',olevel])
+    for line in cc_query.split('\n'):
+      if re.search('\s%s\s' % flag, line):
+        if re.search('\[enabled\]', line):
+          self.enabled_in_config_cache[(olevel, flag)] = True
+          return True
+    self.enabled_in_config_cache[(olevel, flag)] = False
+    return False
 
   def cfg_to_flags(self, cfg):
     # set -O level first
