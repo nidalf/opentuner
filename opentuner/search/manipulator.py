@@ -328,6 +328,9 @@ class Parameter(with_metaclass(abc.ABCMeta, object)):
   def is_permutation(self, ignored=None):
     return isinstance(self, PermutationParameter)
 
+  def is_boolean(self):
+    return isinstance(self, BooleanParameter)
+
   def manipulators(self, config):
     """
     a list of manipulator functions to change this value in the config
