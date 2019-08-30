@@ -308,7 +308,8 @@ class GccFlagsTuner(opentuner.measurement.MeasurementInterface):
         if self.enabledInConfig(flag, cfg['-O']):
           flags.append(invert_gcc_flag(flag))
     for param in self.cc_params:
-      flags.append('--param=%s=%d' % (param, cfg[param]))
+      if cfg[param] != self.cc_param_defaults[param]['default']:
+        flags.append('--param=%s=%d' % (param, cfg[param]))
 
     # workaround sets of flags that trigger compiler crashes/hangs
     for bugset in self.cc_bugs:
