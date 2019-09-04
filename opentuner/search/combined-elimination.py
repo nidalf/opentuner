@@ -76,7 +76,8 @@ class CombinedElimination(SequentialSearchTechnique):
       # Contstruct a list of configurations to exploit i.e. any that did better
       # than baseline_config.
       exploit_configs = []
-      for param, cfg in sorted(explore_configs.items(), key=lamda x: x[0].name):
+      for param, cfg in sorted(explore_configs.items(),
+                               key=lambda x: x[0].name):
         pct_imp = 1 - objective.relative(cfg, baseline_config)
         if pct_imp > 0:
           improvement = True
