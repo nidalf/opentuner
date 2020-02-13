@@ -69,6 +69,8 @@ argparser.add_argument('--flag-importance',
                             'given json file.')
 argparser.add_argument('--objective', default='time',
                        help='The objective to optimize.')
+argparser.add_argument('--optimization-levels', dest="baseline", default=[], nargs='*',
+                       help='The optimization baseline to run.')
 
 
 class GccFlagsTuner(opentuner.measurement.MeasurementInterface):
@@ -77,6 +79,9 @@ class GccFlagsTuner(opentuner.measurement.MeasurementInterface):
                                         **kwargs)
     self.gcc_version = self.extract_gcc_version()
     self.baselines = ['-O0', '-O1', '-Os', '-O2', '-O3']
+    # give the user the ability to choose the baseline to run over
+    if args.baseline:
+      self.baselines = ["-%s" % option for option in args.baseline]
     self.cc_flags = self.extract_working_flags()
     self.cc_param_defaults = self.extract_param_defaults()
     self.cc_params = self.extract_working_params()
@@ -371,8 +376,13 @@ class GccFlagsTuner(opentuner.measurement.MeasurementInterface):
     elif compile_result == self.compile_results['error']:
       return Result(state='ERROR', time=float('inf'), size=float('inf'))
 
-    tmp_dir = self.get_tmpdir(result_id)
-    output_dir = os.path.join(tmp_dir, args.output)
+    # if the user provided a full absolute path to the output then use it without creating a temp folder
+    if os.path.isabs(args.output):
+      output_dir = args.output
+    else:
+      tmp_dir = self.get_tmpdir(result_id)
+      output_dir = os.path.join(tmp_dir, args.output)
+
     result = Result(state='OK', time=float('inf'), size=float('inf'))
 
     if self.args.time_template != '':
@@ -456,9 +466,19 @@ class GccFlagsTuner(opentuner.measurement.MeasurementInterface):
     except OSError:
       os.mkdir(tmp_dir)
     output_dir = os.path.join(tmp_dir, args.output)
+
+    # due to limitation in command line length in windows, we will pass the flags inside a text file
+    strFlags = ""
+    if sys.platform.startswith("linux"):
+      strFlags= ' '.join(flags)
+    else:
+      f = open("flags.txt", "w")
+      f.write(" ".join(flags))
+      f.close()
+
     cmd = args.compile_template.format(source=args.source, output=output_dir,
-                                       flags=' '.join(flags),
-                                       cc=args.cc)
+                                      flags=strFlags,
+                                      cc=args.cc)
 
     # log.info('cmd: ' + str(cmd))
     compile_result = self.call_program(cmd, limit=args.compile_limit,
