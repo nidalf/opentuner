@@ -225,8 +225,18 @@ class GccFlagsTuner(opentuner.measurement.MeasurementInterface):
   def check_if_flag_works(self, flag, try_inverted=True):
     # need -Werror as some unsupported flags only produce warnings and the
     # returncode is still 0
+    strFlag = ""
+    if sys.platform.startswith("linux"):
+      strFlag = '-Werror ' + flag
+    else:
+      output_dir = os.path.dirname(args.output)
+      f = open(os.path.join(output_dir, "flags.txt"), "w")
+      f.write('-Werror ' + flag)
+      f.close()
+
     cmd = args.compile_template.format(source=args.source, output=args.output,
-                                       flags='-Werror ' + flag, cc=args.cc)
+                                       flags=strFlag, cc=args.cc)
+    log.info("trying out: %s", flag)
     compile_result = self.call_program(cmd, limit=args.compile_limit)
     if compile_result['returncode'] != 0:
       log.warning("removing flag %s because it results in compile error", flag)
@@ -472,7 +482,8 @@ class GccFlagsTuner(opentuner.measurement.MeasurementInterface):
     if sys.platform.startswith("linux"):
       strFlags= ' '.join(flags)
     else:
-      f = open("flags.txt", "w")
+      output_dir = os.path.dirname(args.output)
+      f = open(os.path.join(output_dir, "flags.txt"), "w")
       f.write(" ".join(flags))
       f.close()
 
